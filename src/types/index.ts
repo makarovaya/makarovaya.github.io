@@ -1,9 +1,9 @@
 export type Role = "employee" | "manager" | "analytics";
 export type ReviewStatus = "draft" | "submitted" | "completed";
-export type Rating = "" | "below" | "meets" | "above" | "no_info" | "not_applicable";
+export type Rating = "" | "below" | "meets" | "above" | "no_info";
 export type PerformanceCategory = "" | "A" | "B" | "C" | "D";
 export type CompetencyBlock = "result" | "technology" | "team" | "leadership";
-export type CompetencyRatingMap = Record<string, Rating>;
+export type DevelopmentTrack = "" | "expert" | "career_growth" | "mentor" | "leadership" | "retention_key_expert" | "successor";
 
 export type Employee = {
   id: string;
@@ -30,7 +30,7 @@ export type Competency = {
   title: string;
   description: string;
   indicators: string[];
-  applicableTo: "all" | "leadership";
+  applicableTo: "all" | "managers";
 };
 
 export type SelfReview = {
@@ -39,8 +39,6 @@ export type SelfReview = {
   accomplishments: string[];
   hardStrengths: string[];
   hardDevelopment: string[];
-  competencyRatings: CompetencyRatingMap;
-  leadershipNotApplicable: boolean;
   corporateStrengths: string[];
   corporateDevelopment: string[];
   developmentFocus: string;
@@ -51,7 +49,11 @@ export type ManagerReview = {
   employeeId: string;
   status: "draft" | "completed";
   category: PerformanceCategory;
-  competencyRatings: CompetencyRatingMap;
+  hardRating: Rating;
+  resultRating: Rating;
+  technologyRating: Rating;
+  teamRating: Rating;
+  leadershipRating: Rating;
   hardStrengths: string[];
   hardDevelopment: string[];
   corporateStrengths: string[];
@@ -60,5 +62,9 @@ export type ManagerReview = {
   developmentText: string;
   categoryRationale: string;
   agreedFocus: string;
+  developmentTrack: DevelopmentTrack;
+  targetPosition: string;
+  successorPosition: string;
+  trackComment: string;
   finalComment: string;
 };
