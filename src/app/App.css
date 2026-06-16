@@ -111,6 +111,8 @@ textarea:focus, input:focus, select:focus { border-color: var(--rt-border-accent
 .competency-compact-list { display: grid; gap: 8px; }
 .competency-option { display: grid; grid-template-columns: 1fr 30px; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--rt-border-soft); border-radius: 10px; background: white; }
 .competency-option.is-selected { border-color: #b8dfc9; background: #eef9f3; }
+.competency-option.is-muted { opacity: .42; background: #f3f4f6; }
+.competency-option.is-muted .competency-option__main { cursor: not-allowed; }
 .competency-option__main { display: grid; gap: 3px; padding: 0; border: 0; background: transparent; text-align: left; }
 .competency-option__main strong { font-size: 13px; }
 .competency-option__main span { color: var(--rt-fg-muted); font-size: 11px; }
