@@ -107,19 +107,29 @@ const softSelectionFromReview = (primary: string[] = [], fallback: string[] = []
   const source = primary.some((id) => mappedSoftSkillIds.has(id)) ? primary : fallback;
   return source.filter((id) => mappedSoftSkillIds.has(id));
 };
+type SoftInfoPanelContent = {
+  eyebrow: string;
+  title: string;
+  description?: string;
+};
 
 function SelectionCounter({ strengths, growth }: { strengths: string[]; growth: string[] }) {
   return <div className="selection-counter"><span>Сильные стороны: <b>{strengths.length}</b> из 5</span><span>Зоны роста: <b>{growth.length}</b> из 5</span></div>;
 }
 
 function MappedSkillList({ mode, situation, strengths, growth, onChange, employeeStrengths = [], employeeGrowth = [] }: { mode: "employee" | "manager"; situation: ManagementSituation; strengths: string[]; growth: string[]; onChange: (next: { strengths: string[]; growth: string[] }) => void; employeeStrengths?: string[]; employeeGrowth?: string[] }) {
-  const [info, setInfo] = useState<SkillMappedToCompetency | null>(null);
+  const [info, setInfo] = useState<SoftInfoPanelContent | null>(null);
+  const [openCompetencies, setOpenCompetencies] = useState<string[]>([]);
+  const [selectedOnly, setSelectedOnly] = useState(false);
   const [query, setQuery] = useState("");
   const lowerQuery = query.trim().toLowerCase();
   const selectedIds = new Set([...strengths, ...growth, ...employeeStrengths, ...employeeGrowth]);
   const situationSkills = softSkillsForSituation(situation);
-  const outsideSituationSkills = mappedSoftSkills.filter((skill) => selectedIds.has(skill.id) && !situationSkills.some((item) => item.id === skill.id));
-  const available = [...situationSkills, ...outsideSituationSkills].filter((skill) => !lowerQuery || `${skill.title} ${skill.blockTitle} ${skill.competencyTitle}`.toLowerCase().includes(lowerQuery));
+  const situationConfig = managementSituations.find((item) => item.value === situation);
+  const outsideSituationSkills = mappedSoftSkills.filter((skill) => selectedIds.has(skill.id) && (situationConfig?.showLeadership || skill.blockId !== "leadership") && !situationSkills.some((item) => item.id === skill.id));
+  const searched = [...situationSkills, ...outsideSituationSkills].filter((skill) => !lowerQuery || `${skill.title} ${skill.blockTitle} ${skill.competencyTitle}`.toLowerCase().includes(lowerQuery));
+  const selectedCompetencies = [...new Set(searched.filter((skill) => strengths.includes(skill.id) || growth.includes(skill.id)).map((skill) => skill.competencyId))];
+  const available = selectedOnly ? searched.filter((skill) => strengths.includes(skill.id) || growth.includes(skill.id)) : searched;
   const select = (id: string, target: "strength" | "growth") => {
     if (target === "strength") {
       const next = strengths.includes(id) ? strengths.filter((item) => item !== id) : strengths.length >= 5 ? strengths : [...strengths, id];
@@ -129,10 +139,19 @@ function MappedSkillList({ mode, situation, strengths, growth, onChange, employe
       onChange({ strengths: strengths.filter((item) => item !== id), growth: next });
     }
   };
+  const toggleCompetency = (id: string) => setOpenCompetencies((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id]);
+  const showSelected = () => {
+    const next = !selectedOnly;
+    setSelectedOnly(next);
+    if (next) setOpenCompetencies((items) => [...new Set([...items, ...selectedCompetencies])]);
+  };
+  const skillInfo = (skill: SkillMappedToCompetency): SoftInfoPanelContent => ({ eyebrow: `${skill.blockTitle} · ${skill.competencyTitle}`, title: skill.title, description: skill.fullDescription || (mode === "employee" ? skill.employeeHint : skill.managerHint) });
+  const competencyInfo = (skill: SkillMappedToCompetency): SoftInfoPanelContent => ({ eyebrow: skill.blockTitle, title: skill.competencyTitle, description: skill.competencyShortDescription || "Описание компетенции не заполнено." });
   if (!situation) return <div className="empty-note">Сначала выберите управленческую ситуацию, чтобы увидеть подходящий набор навыков.</div>;
   return <div className="mapped-skills">
     <SelectionCounter strengths={strengths} growth={growth} />
-    <input className="skill-search" value={query} placeholder="Поиск по навыку, компетенции или блоку" onChange={(event) => setQuery(event.target.value)} />
+    <div className="mapped-skills__tools"><input className="skill-search" value={query} placeholder="Поиск по навыку, компетенции или блоку" onChange={(event) => setQuery(event.target.value)} /><button type="button" className={`selected-only-toggle ${selectedOnly ? "is-active" : ""}`} onClick={showSelected}>Показать выбранные</button></div>
+    {!available.length && <div className="empty-note">{selectedOnly ? "Выбранных навыков пока нет." : "По вашему поиску ничего не найдено."}</div>}
     {Object.entries(blockNames).map(([block, blockTitle]) => {
       const blockItems = available.filter((skill) => skill.blockId === block);
       if (!blockItems.length) return null;
@@ -140,22 +159,34 @@ function MappedSkillList({ mode, situation, strengths, growth, onChange, employe
       return <section className="mapped-block" key={block}><h3>{blockTitle}</h3>{competencyIds.map((competencyId) => {
         const items = blockItems.filter((skill) => skill.competencyId === competencyId);
         const first = items[0];
-        return <div className="mapped-competency" key={competencyId}><div className="mapped-competency__head"><h4>{first.competencyTitle}</h4>{first.competencyShortDescription && <p>{first.competencyShortDescription}</p>}</div>{items.map((skill) => {
-          const isStrength = strengths.includes(skill.id);
-          const isGrowth = growth.includes(skill.id);
-          const strengthDisabled = strengths.length >= 5 && !isStrength;
-          const growthDisabled = growth.length >= 5 && !isGrowth;
-          return <div className="mapped-skill-row" key={skill.id}><div><strong>{skill.title}</strong>{mode === "manager" && (employeeStrengths.includes(skill.id) || employeeGrowth.includes(skill.id)) && <span className="employee-choice">{employeeStrengths.includes(skill.id) ? "Выбор сотрудника: сильная сторона" : "Выбор сотрудника: зона роста"}</span>}</div><div className="mapped-skill-row__actions"><button type="button" disabled={strengthDisabled} className={isStrength ? "is-selected" : ""} onClick={() => select(skill.id, "strength")}>Сильная сторона</button><button type="button" disabled={growthDisabled} className={isGrowth ? "is-selected growth" : ""} onClick={() => select(skill.id, "growth")}>Зона роста</button><button type="button" className="info-button" onClick={() => setInfo(skill)}>i</button></div></div>;
-        })}</div>;
+        const isOpen = openCompetencies.includes(competencyId);
+        const strengthCount = items.filter((skill) => strengths.includes(skill.id)).length;
+        const growthCount = items.filter((skill) => growth.includes(skill.id)).length;
+        return <div className={`mapped-competency ${isOpen ? "is-open" : ""}`} key={competencyId}>
+          <div className="mapped-competency__head">
+            <button type="button" className="mapped-competency__summary" onClick={() => toggleCompetency(competencyId)}>
+              <span className="mapped-competency__title">{first.competencyTitle}</span>
+              <span className="mapped-competency__meta">{blockTitle} · {items.length} навыков · Сильные стороны: {strengthCount} · Зоны роста: {growthCount}</span>
+            </button>
+            <button type="button" className="mapped-competency__toggle" onClick={() => toggleCompetency(competencyId)}>{isOpen ? "Свернуть" : "Раскрыть"}</button>
+            <button type="button" className="info-button" aria-label={`Описание компетенции ${first.competencyTitle}`} onClick={() => setInfo(competencyInfo(first))}>i</button>
+          </div>
+          {isOpen && <div className="mapped-competency__skills">{items.map((skill) => {
+            const isStrength = strengths.includes(skill.id);
+            const isGrowth = growth.includes(skill.id);
+            const strengthDisabled = strengths.length >= 5 && !isStrength;
+            const growthDisabled = growth.length >= 5 && !isGrowth;
+            return <div className="mapped-skill-row" key={skill.id}><div><strong>{skill.title}</strong>{mode === "manager" && (employeeStrengths.includes(skill.id) || employeeGrowth.includes(skill.id)) && <span className="employee-choice">{employeeStrengths.includes(skill.id) ? "Выбор сотрудника: сильная сторона" : "Выбор сотрудника: зона роста"}</span>}</div><div className="mapped-skill-row__actions"><button type="button" disabled={strengthDisabled} className={isStrength ? "is-selected" : ""} onClick={() => select(skill.id, "strength")}>Сильная сторона</button><button type="button" disabled={growthDisabled} className={isGrowth ? "is-selected growth" : ""} onClick={() => select(skill.id, "growth")}>Зона роста</button><button type="button" className="info-button" onClick={() => setInfo(skillInfo(skill))}>i</button></div></div>;
+          })}</div>}
+        </div>;
       })}</section>;
     })}
     <SkillInfoSidePanel skill={info} mode={mode} onClose={() => setInfo(null)} />
   </div>;
 }
 
-function SkillInfoSidePanel({ skill, mode, onClose }: { skill: SkillMappedToCompetency | null; mode: "employee" | "manager"; onClose: () => void }) {
-  const description = skill?.fullDescription || (mode === "employee" ? skill?.employeeHint : skill?.managerHint);
-  return <div className={`side-panel-backdrop ${skill ? "is-open" : ""}`} onMouseDown={onClose}><aside className="side-panel" onMouseDown={(event) => event.stopPropagation()}>{skill && <><div className="eyebrow">{skill.blockTitle} · {skill.competencyTitle}</div><h2>{skill.title}</h2><p>{description}</p><Button onClick={onClose}>Закрыть</Button></>}</aside></div>;
+function SkillInfoSidePanel({ skill, onClose }: { skill: SoftInfoPanelContent | null; mode: "employee" | "manager"; onClose: () => void }) {
+  return <div className={`side-panel-backdrop ${skill ? "is-open" : ""}`} onMouseDown={onClose}><aside className="side-panel" onMouseDown={(event) => event.stopPropagation()}>{skill && <><div className="eyebrow">{skill.eyebrow}</div><h2>{skill.title}</h2><p>{skill.description}</p><Button onClick={onClose}>Закрыть</Button></>}</aside></div>;
 }
 
 function Avatar({ employee }: { employee: Employee }) {
