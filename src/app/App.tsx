@@ -23,6 +23,7 @@ const managerTracks: { value: ManagerMainTrack; label: string }[] = [
   { value: "expert", label: "Экспертный трек" },
   { value: "management", label: "Управленческий трек" },
 ];
+const mappedSoftSkillIds = new Set(mappedSoftSkills.map((skill) => skill.id));
 
 const getEmployee = (id: string) => employees.find((employee) => employee.id === id) ?? employees[0];
 const itemTitle = (id: string) => {
@@ -102,6 +103,10 @@ const softSkillsForSituation = (situation: ManagementSituation) => {
   if (!config) return [];
   return mappedSoftSkills.filter((skill) => skill.level === config.level && (config.showLeadership || skill.blockId !== "leadership"));
 };
+const softSelectionFromReview = (primary: string[] = [], fallback: string[] = []) => {
+  const source = primary.some((id) => mappedSoftSkillIds.has(id)) ? primary : fallback;
+  return source.filter((id) => mappedSoftSkillIds.has(id));
+};
 
 function SelectionCounter({ strengths, growth }: { strengths: string[]; growth: string[] }) {
   return <div className="selection-counter"><span>Сильные стороны: <b>{strengths.length}</b> из 5</span><span>Зоны роста: <b>{growth.length}</b> из 5</span></div>;
@@ -111,7 +116,10 @@ function MappedSkillList({ mode, situation, strengths, growth, onChange, employe
   const [info, setInfo] = useState<SkillMappedToCompetency | null>(null);
   const [query, setQuery] = useState("");
   const lowerQuery = query.trim().toLowerCase();
-  const available = softSkillsForSituation(situation).filter((skill) => !lowerQuery || `${skill.title} ${skill.blockTitle} ${skill.competencyTitle}`.toLowerCase().includes(lowerQuery));
+  const selectedIds = new Set([...strengths, ...growth, ...employeeStrengths, ...employeeGrowth]);
+  const situationSkills = softSkillsForSituation(situation);
+  const outsideSituationSkills = mappedSoftSkills.filter((skill) => selectedIds.has(skill.id) && !situationSkills.some((item) => item.id === skill.id));
+  const available = [...situationSkills, ...outsideSituationSkills].filter((skill) => !lowerQuery || `${skill.title} ${skill.blockTitle} ${skill.competencyTitle}`.toLowerCase().includes(lowerQuery));
   const select = (id: string, target: "strength" | "growth") => {
     if (target === "strength") {
       const next = strengths.includes(id) ? strengths.filter((item) => item !== id) : strengths.length >= 5 ? strengths : [...strengths, id];
@@ -278,9 +286,19 @@ function ManagerReviewPage({ employee, selfReview, review, onUpdate, onBack, not
   const [errors, setErrors] = useState<string[]>([]);
   const set = <K extends keyof ManagerReview>(key: K, value: ManagerReview[K]) => onUpdate({ ...review, [key]: value });
   const setWithDraft = (changes: Partial<ManagerReview>) => onUpdate({ ...review, ...changes });
-  const employeeSoftStrengths = selfReview.softStrengths?.length ? selfReview.softStrengths : selfReview.corporateStrengths;
-  const employeeSoftGrowth = selfReview.softGrowthAreas?.length ? selfReview.softGrowthAreas : selfReview.corporateDevelopment;
+  const employeeSoftStrengths = softSelectionFromReview(selfReview.softStrengths, selfReview.corporateStrengths);
+  const employeeSoftGrowth = softSelectionFromReview(selfReview.softGrowthAreas, selfReview.corporateDevelopment);
   const fillDemo = () => { const next = { ...review, category: "B" as const, hardStrengths: selfReview.hardStrengths.length ? selfReview.hardStrengths.slice(0, 3) : ["data"], hardDevelopment: selfReview.hardDevelopment.length ? selfReview.hardDevelopment.slice(0, 3) : ["presentations"], corporateStrengths: employeeSoftStrengths.slice(0, 5), corporateDevelopment: employeeSoftGrowth.slice(0, 5), mainTrack: selfReview.preferredDevelopmentDirection === "leadership" ? "management" as const : "expert" as const, mentorTrack: selfReview.interestedInMentoring, retentionTrack: false, successorTrack: false, managerComment: "Трек выбран с учётом самооценки сотрудника.", finalComment: "Трек выбран с учётом самооценки сотрудника." }; onUpdate(next); };
+  const confirmEmployeeSoftSkills = () => {
+    const nextStrengths = employeeSoftStrengths.slice(0, 5);
+    const nextGrowth = employeeSoftGrowth.filter((id) => !nextStrengths.includes(id)).slice(0, 5);
+    if (!nextStrengths.length && !nextGrowth.length) {
+      notify("У сотрудника нет выбранных soft skills для подтверждения");
+      return;
+    }
+    onUpdate({ ...review, corporateStrengths: nextStrengths, corporateDevelopment: nextGrowth });
+    notify("Выбор сотрудника по soft skills подтверждён");
+  };
   const complete = () => { const nextErrors = validateManager(review); setErrors(nextErrors); if (!nextErrors.length) { onUpdate({ ...review, status: "completed" }); notify("Оценка руководителя завершена"); onComplete(); } };
   return <div className="manager-page">
     <div className="manager-header"><Button variant="ghost" onClick={onBack}>← Вернуться к списку</Button><div><h1>{employee.fullName}</h1><p>{employee.position} · {employee.department}</p></div><Badge status={review.status} /></div>
@@ -306,7 +324,7 @@ function ManagerReviewPage({ employee, selfReview, review, onUpdate, onBack, not
           <div className="divider" /><QuickCopy label="Подтвердить навыки, которые стоит усилить" onClick={() => setWithDraft({ hardDevelopment: [...new Set([...review.hardDevelopment, ...selfReview.hardDevelopment])].slice(0, 3) })} /><SkillPicker selected={review.hardDevelopment} onChange={(items) => setWithDraft({ hardDevelopment: items.slice(0, 3) })} tone="manager-development" exclude={review.hardStrengths} />
         </Card>
         <Card title="Soft skills" description="Выберите навыки, которые вы считаете сильными сторонами сотрудника, и навыки, которые являются зонами роста. Вы можете подтвердить выбор сотрудника или скорректировать его.">
-          <QuickCopy label="Подтвердить выбор сотрудника" onClick={() => setWithDraft({ corporateStrengths: employeeSoftStrengths.slice(0, 5), corporateDevelopment: employeeSoftGrowth.slice(0, 5) })} />
+          <QuickCopy label="Подтвердить выбор сотрудника" onClick={confirmEmployeeSoftSkills} />
           <MappedSkillList mode="manager" situation={selfReview.managementSituation || "no_reports"} strengths={review.corporateStrengths} growth={review.corporateDevelopment} employeeStrengths={employeeSoftStrengths} employeeGrowth={employeeSoftGrowth} onChange={(next) => setWithDraft({ corporateStrengths: next.strengths, corporateDevelopment: next.growth })} />
         </Card>
         <Card title="Трек сотрудника на следующий период" description="Выберите трек, который считаете приоритетным для сотрудника на следующий период. Вы можете учесть предпочтение сотрудника или скорректировать его.">
