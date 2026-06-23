@@ -146,7 +146,8 @@ function MappedSkillList({ mode, situation, strengths, growth, onChange, employe
 }
 
 function SkillInfoSidePanel({ skill, mode, onClose }: { skill: SkillMappedToCompetency | null; mode: "employee" | "manager"; onClose: () => void }) {
-  return <div className={`side-panel-backdrop ${skill ? "is-open" : ""}`} onMouseDown={onClose}><aside className="side-panel" onMouseDown={(event) => event.stopPropagation()}>{skill && <><div className="eyebrow">{skill.blockTitle} · {skill.competencyTitle}</div><h2>{skill.title}</h2><h3>Кратко</h3><p>{mode === "employee" ? skill.employeeHint : skill.managerHint}</p>{skill.fullDescription && <><h3>Подробнее</h3><p>{skill.fullDescription}</p></>}<Button onClick={onClose}>Закрыть</Button></>}</aside></div>;
+  const description = skill?.fullDescription || (mode === "employee" ? skill?.employeeHint : skill?.managerHint);
+  return <div className={`side-panel-backdrop ${skill ? "is-open" : ""}`} onMouseDown={onClose}><aside className="side-panel" onMouseDown={(event) => event.stopPropagation()}>{skill && <><div className="eyebrow">{skill.blockTitle} · {skill.competencyTitle}</div><h2>{skill.title}</h2><p>{description}</p><Button onClick={onClose}>Закрыть</Button></>}</aside></div>;
 }
 
 function Avatar({ employee }: { employee: Employee }) {
@@ -221,8 +222,6 @@ function SelfReviewEditor({ employee, review, onUpdate, notify }: { employee: Em
   const set = <K extends keyof SelfReview>(key: K, value: SelfReview[K]) => onUpdate({ ...review, [key]: value });
   const setSoft = (next: { strengths: string[]; growth: string[] }) => onUpdate({ ...review, softStrengths: next.strengths, softGrowthAreas: next.growth, corporateStrengths: next.strengths, corporateDevelopment: next.growth });
   const changeSituation = (value: ManagementSituation) => {
-    const hasSelection = ((review.softStrengths ?? []).length || (review.softGrowthAreas ?? []).length || (review.corporateStrengths ?? []).length || (review.corporateDevelopment ?? []).length) > 0;
-    if (hasSelection && value !== review.managementSituation && !window.confirm("При смене управленческой ситуации список навыков может измениться. Уже выбранные навыки будут сброшены. Продолжить?")) return;
     onUpdate({ ...review, managementSituation: value, softStrengths: [], softGrowthAreas: [], corporateStrengths: [], corporateDevelopment: [] });
   };
   const fillDemo = () => onUpdate({ ...review, status: "draft", accomplishments: [], hardStrengths: ["data", "stakeholders"], hardDevelopment: ["presentations"], managementSituation: "no_reports", softStrengths: ["result-sozdaet-luchshiy-opyt-level_1-analiz-situacii-klienta-zakazchika-i-konteksta"], softGrowthAreas: ["technology-vnedryaet-tehnologii-level_1-primenenie-ii"], corporateStrengths: ["result-sozdaet-luchshiy-opyt-level_1-analiz-situacii-klienta-zakazchika-i-konteksta"], corporateDevelopment: ["technology-vnedryaet-tehnologii-level_1-primenenie-ii"], preferredDevelopmentDirection: "expertise", interestedInMentoring: true, employeeComment: "Хочу развивать экспертизу и попробовать роль наставника.", developmentFocus: "", notes: "" });
@@ -240,8 +239,9 @@ function SelfReviewEditor({ employee, review, onUpdate, notify }: { employee: Em
       <div className="subsection"><h3>Сильные стороны <small>от 1 до 3</small></h3><SkillPicker selected={review.hardStrengths} onChange={(items) => set("hardStrengths", items.slice(0, 3))} tone="strength" exclude={review.hardDevelopment} /></div>
       <div className="subsection"><h3>Зоны роста <small>от 1 до 3</small></h3><SkillPicker selected={review.hardDevelopment} onChange={(items) => set("hardDevelopment", items.slice(0, 3))} tone="development" exclude={review.hardStrengths} /></div>
     </Card>}
-    {step === 1 && <Card title="Soft skills" eyebrow="Шаг 2 из 3" description="Выберите навыки, которые вы считаете своими сильными сторонами, и навыки, которые являются зонами роста. Навыки сгруппированы по корпоративной модели компетенций.">
+    {step === 1 && <Card title="Soft skills" eyebrow="Шаг 2 из 3">
       <label className="field"><span className="field__label">Какая управленческая ситуация ближе всего описывает вашу роль?<b>*</b></span><select className="select-control" value={review.managementSituation} onChange={(event) => changeSituation(event.target.value as ManagementSituation)}><option value="">Выберите вариант</option>{managementSituations.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+      {review.managementSituation && <p className="soft-skill-instruction">Выберите навыки, которые вы считаете своими сильными сторонами, и навыки, которые являются зонами роста. Навыки сгруппированы по корпоративной модели компетенций.</p>}
       <MappedSkillList mode="employee" situation={review.managementSituation} strengths={review.softStrengths?.length ? review.softStrengths : review.corporateStrengths} growth={review.softGrowthAreas?.length ? review.softGrowthAreas : review.corporateDevelopment} onChange={setSoft} />
     </Card>}
     {step === 2 && <Card title="Развитие" eyebrow="Шаг 3 из 3" description="Выберите направление, в котором вам было бы интересно развиваться дальше. Руководитель увидит ваш выбор и сможет учесть его при обсуждении следующего периода.">
@@ -293,7 +293,7 @@ function ManagerReviewPage({ employee, selfReview, review, onUpdate, onBack, not
         <SummaryTags title="Hard skills · зоны роста" items={selfReview.hardDevelopment.map(itemTitle)} tone="development" />
         <SummaryTags title="Soft skills · сильные стороны" items={employeeSoftStrengths.map(itemTitle)} tone="strength" />
         <SummaryTags title="Soft skills · зоны роста" items={employeeSoftGrowth.map(itemTitle)} tone="development" />
-        <SummaryTags title="Предпочтение развития" items={[employeeDirections.find((item) => item.value === selfReview.preferredDevelopmentDirection)?.label ?? "Не выбрано", selfReview.interestedInMentoring ? "Интерес к роли ментора / наставника" : ""].filter(Boolean)} />
+        <SummaryTags title="Предпочтения в развитии" items={[employeeDirections.find((item) => item.value === selfReview.preferredDevelopmentDirection)?.label ?? "Не выбрано", selfReview.interestedInMentoring ? "Интерес к роли ментора / наставника" : ""].filter(Boolean)} />
         {selfReview.employeeComment && <SummaryTags title="Комментарий сотрудника" items={[selfReview.employeeComment]} />}
       </aside>
       <section className="split__right">
@@ -306,11 +306,13 @@ function ManagerReviewPage({ employee, selfReview, review, onUpdate, onBack, not
           <div className="divider" /><QuickCopy label="Подтвердить навыки, которые стоит усилить" onClick={() => setWithDraft({ hardDevelopment: [...new Set([...review.hardDevelopment, ...selfReview.hardDevelopment])].slice(0, 3) })} /><SkillPicker selected={review.hardDevelopment} onChange={(items) => setWithDraft({ hardDevelopment: items.slice(0, 3) })} tone="manager-development" exclude={review.hardStrengths} />
         </Card>
         <Card title="Soft skills" description="Выберите навыки, которые вы считаете сильными сторонами сотрудника, и навыки, которые являются зонами роста. Вы можете подтвердить выбор сотрудника или скорректировать его.">
+          <QuickCopy label="Подтвердить выбор сотрудника" onClick={() => setWithDraft({ corporateStrengths: employeeSoftStrengths.slice(0, 5), corporateDevelopment: employeeSoftGrowth.slice(0, 5) })} />
           <MappedSkillList mode="manager" situation={selfReview.managementSituation || "no_reports"} strengths={review.corporateStrengths} growth={review.corporateDevelopment} employeeStrengths={employeeSoftStrengths} employeeGrowth={employeeSoftGrowth} onChange={(next) => setWithDraft({ corporateStrengths: next.strengths, corporateDevelopment: next.growth })} />
         </Card>
         <Card title="Трек сотрудника на следующий период" description="Выберите трек, который считаете приоритетным для сотрудника на следующий период. Вы можете учесть предпочтение сотрудника или скорректировать его.">
           <div className="preference-note"><strong>Выбор сотрудника:</strong> {employeeDirections.find((item) => item.value === selfReview.preferredDevelopmentDirection)?.label ?? "не выбран"}{selfReview.interestedInMentoring ? " · интерес к менторству" : ""}</div>
           <div className="radio-card-grid">{managerTracks.map((item) => <button type="button" key={item.value} className={`radio-card ${review.mainTrack === item.value ? "is-selected" : ""}`} onClick={() => set("mainTrack", item.value)}>{item.label}</button>)}</div>
+          <h3 className="additional-tracks-title">Также можно выбрать дополнительные треки</h3>
           <label className="check-row"><input type="checkbox" checked={!!review.mentorTrack} onChange={(event) => set("mentorTrack", event.target.checked)} /><span>Трек наставника / ментора</span></label>
           <label className="check-row"><input type="checkbox" checked={!!review.retentionTrack} onChange={(event) => set("retentionTrack", event.target.checked)} /><span>Ключевой эксперт / трек удержания</span><small>Для сотрудников с редкой экспертизой или высоким риском потери ценных знаний.</small></label>
           <label className="check-row"><input type="checkbox" checked={!!review.successorTrack} onChange={(event) => set("successorTrack", event.target.checked)} /><span>Преемник на позицию</span><small>Для сотрудников, которых можно рассматривать как потенциальных преемников на позицию от 8 грейда.</small></label>

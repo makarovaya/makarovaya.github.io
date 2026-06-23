@@ -225,6 +225,7 @@ td span { display: block; margin-top: 3px; color: var(--rt-fg-soft); font-size: 
 .selection-counter span { color: var(--rt-fg-muted); font-size: 12px; font-weight: 700; }
 .selection-counter b { color: var(--rt-fg-accent); }
 .mapped-skills { display: grid; gap: 14px; }
+.soft-skill-instruction { margin: 0 0 14px; color: var(--rt-fg-muted); font-size: 14px; line-height: 21px; }
 .skill-search { margin-bottom: 4px; }
 .mapped-block { display: grid; gap: 12px; padding-top: 4px; }
 .mapped-block h3 { margin: 0; color: var(--rt-fg-default); }
@@ -254,6 +255,7 @@ td span { display: block; margin-top: 3px; color: var(--rt-fg-soft); font-size: 
 .check-row small { grid-column: 2; color: var(--rt-fg-muted); font-weight: 400; line-height: 18px; }
 .preference-note { margin-bottom: 14px; padding: 11px 12px; border-radius: 10px; background: #f4ecff; color: var(--rt-fg-muted); font-size: 13px; }
 .preference-note strong { color: var(--rt-fg-default); }
+.additional-tracks-title { margin: 2px 0 10px; color: var(--rt-fg-default); font-size: 14px; letter-spacing: 0; text-transform: none; }
 
 @media (max-width: 1180px) {
   .topbar { flex-wrap: wrap; gap: 10px; padding: 12px 20px; }
