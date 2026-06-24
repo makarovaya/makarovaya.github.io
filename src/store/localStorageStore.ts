@@ -54,6 +54,7 @@ const normalizeManagerReview = (review: Partial<ManagerReview>): ManagerReview =
     hardDevelopment: review.hardDevelopment ?? [],
     corporateStrengths: review.corporateStrengths ?? [],
     corporateDevelopment: review.corporateDevelopment ?? [],
+    softManagementSituation: review.softManagementSituation ?? "",
     mainTrack: mainTrackFromLegacy(review),
     mentorTrack: !!review.mentorTrack || review.developmentTrack === "mentor",
     retentionTrack: !!review.retentionTrack || review.developmentTrack === "retention_key_expert",

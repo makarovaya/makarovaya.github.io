@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { competencies, createEmptyManagerReview, createEmptySelfReview, employees, skills } from "../data/mockData";
-import { mappedSoftSkills } from "../data/softSkills";
+import { mappedSoftSkills } from "../data/softSkillsMapping";
 import { loadState, resetState, saveManagerReviews, saveRole, saveSelectedEmployee, saveSelfReviews } from "../store/localStorageStore";
 import type { Competency, Employee, EmployeeDevelopmentDirection, ManagementSituation, ManagerMainTrack, ManagerReview, Role, SelfReview, SkillMappedToCompetency } from "../types";
 import { validateManager, validateSelf } from "../utils/validation";
@@ -19,9 +19,9 @@ const employeeDirections: { value: EmployeeDevelopmentDirection; label: string }
   { value: "expertise", label: "Хочу усиливать экспертизу в своей области" },
   { value: "leadership", label: "Хочу развиваться в управленческой / лидерской роли" },
 ];
-const managerTracks: { value: ManagerMainTrack; label: string }[] = [
-  { value: "expert", label: "Экспертный трек" },
-  { value: "management", label: "Управленческий трек" },
+const managerTracks: { value: ManagerMainTrack; label: string; description: string }[] = [
+  { value: "expert", label: "Экспертный трек", description: "Развитие глубокой экспертизы и профессионального влияния" },
+  { value: "management", label: "Управленческий трек", description: "Развитие управленческих компетенций и лидерских навыков" },
 ];
 const mappedSoftSkillIds = new Set(mappedSoftSkills.map((skill) => skill.id));
 
@@ -55,8 +55,8 @@ function Segmented<T extends string>({ value, options, onChange, compact = false
   return <div className={`segmented ${compact ? "segmented--compact" : ""}`}>{options.map((option) => <button type="button" key={option.value} className={value === option.value ? "is-active" : ""} onClick={() => onChange(option.value)}>{option.label}</button>)}</div>;
 }
 
-function Textarea({ label, value, onChange, maxLength = 1000, hint, required = false, rows = 4 }: { label: string; value: string; onChange: (value: string) => void; maxLength?: number; hint?: string; required?: boolean; rows?: number }) {
-  return <label className="field"><span className="field__label">{label}{required && <b>*</b>}</span>{hint && <span className="field__hint">{hint}</span>}<textarea rows={rows} maxLength={maxLength} value={value} onChange={(event) => onChange(event.target.value)} /><span className="field__count">{value.length} / {maxLength}</span></label>;
+function Textarea({ label, value, onChange, maxLength = 1000, hint, required = false, rows = 4, placeholder = "" }: { label: string; value: string; onChange: (value: string) => void; maxLength?: number; hint?: string; required?: boolean; rows?: number; placeholder?: string }) {
+  return <label className="field"><span className="field__label">{label}{required && <b>*</b>}</span>{hint && <span className="field__hint">{hint}</span>}<textarea rows={rows} maxLength={maxLength} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /><span className="field__count">{value.length} / {maxLength}</span></label>;
 }
 
 function Tag({ children, selected = false, tone = "default", onClick }: { children: ReactNode; selected?: boolean; tone?: string; onClick?: () => void }) {
@@ -117,10 +117,9 @@ function SelectionCounter({ strengths, growth }: { strengths: string[]; growth: 
   return <div className="selection-counter"><span>Сильные стороны: <b>{strengths.length}</b> из 5</span><span>Зоны роста: <b>{growth.length}</b> из 5</span></div>;
 }
 
-function MappedSkillList({ mode, situation, strengths, growth, onChange, employeeStrengths = [], employeeGrowth = [] }: { mode: "employee" | "manager"; situation: ManagementSituation; strengths: string[]; growth: string[]; onChange: (next: { strengths: string[]; growth: string[] }) => void; employeeStrengths?: string[]; employeeGrowth?: string[] }) {
+function MappedSkillList({ mode, situation, strengths, growth, onChange, employeeStrengths = [], employeeGrowth = [], notify = () => undefined }: { mode: "employee" | "manager"; situation: ManagementSituation; strengths: string[]; growth: string[]; onChange: (next: { strengths: string[]; growth: string[] }) => void; employeeStrengths?: string[]; employeeGrowth?: string[]; notify?: (message: string) => void }) {
   const [info, setInfo] = useState<SoftInfoPanelContent | null>(null);
-  const [openCompetencies, setOpenCompetencies] = useState<string[]>([]);
-  const [selectedOnly, setSelectedOnly] = useState(false);
+  const [activeTarget, setActiveTarget] = useState<"strength" | "growth">("strength");
   const [query, setQuery] = useState("");
   const lowerQuery = query.trim().toLowerCase();
   const selectedIds = new Set([...strengths, ...growth, ...employeeStrengths, ...employeeGrowth]);
@@ -128,61 +127,69 @@ function MappedSkillList({ mode, situation, strengths, growth, onChange, employe
   const situationConfig = managementSituations.find((item) => item.value === situation);
   const outsideSituationSkills = mappedSoftSkills.filter((skill) => selectedIds.has(skill.id) && (situationConfig?.showLeadership || skill.blockId !== "leadership") && !situationSkills.some((item) => item.id === skill.id));
   const searched = [...situationSkills, ...outsideSituationSkills].filter((skill) => !lowerQuery || `${skill.title} ${skill.blockTitle} ${skill.competencyTitle}`.toLowerCase().includes(lowerQuery));
-  const selectedCompetencies = [...new Set(searched.filter((skill) => strengths.includes(skill.id) || growth.includes(skill.id)).map((skill) => skill.competencyId))];
-  const available = selectedOnly ? searched.filter((skill) => strengths.includes(skill.id) || growth.includes(skill.id)) : searched;
-  const select = (id: string, target: "strength" | "growth") => {
-    if (target === "strength") {
-      const next = strengths.includes(id) ? strengths.filter((item) => item !== id) : strengths.length >= 5 ? strengths : [...strengths, id];
-      onChange({ strengths: next, growth: growth.filter((item) => item !== id) });
+  const select = (id: string) => {
+    if (activeTarget === "strength") {
+      if (growth.includes(id)) return notify("Навык уже выбран как зона роста. Сначала удалите его из зон роста.");
+      if (!strengths.includes(id) && strengths.length >= 5) return notify("Можно выбрать не больше 5 навыков.");
+      onChange({ strengths: strengths.includes(id) ? strengths.filter((item) => item !== id) : [...strengths, id], growth });
     } else {
-      const next = growth.includes(id) ? growth.filter((item) => item !== id) : growth.length >= 5 ? growth : [...growth, id];
-      onChange({ strengths: strengths.filter((item) => item !== id), growth: next });
+      if (strengths.includes(id)) return notify("Навык уже выбран как сильная сторона. Сначала удалите его из сильных сторон.");
+      if (!growth.includes(id) && growth.length >= 5) return notify("Можно выбрать не больше 5 навыков.");
+      onChange({ strengths, growth: growth.includes(id) ? growth.filter((item) => item !== id) : [...growth, id] });
     }
   };
-  const toggleCompetency = (id: string) => setOpenCompetencies((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id]);
-  const showSelected = () => {
-    const next = !selectedOnly;
-    setSelectedOnly(next);
-    if (next) setOpenCompetencies((items) => [...new Set([...items, ...selectedCompetencies])]);
-  };
-  const skillInfo = (skill: SkillMappedToCompetency): SoftInfoPanelContent => ({ eyebrow: `${skill.blockTitle} · ${skill.competencyTitle}`, title: skill.title, description: skill.fullDescription || (mode === "employee" ? skill.employeeHint : skill.managerHint) });
+  const skillInfo = (skill: SkillMappedToCompetency): SoftInfoPanelContent => ({ eyebrow: `${skill.blockTitle} · ${skill.competencyTitle}`, title: skill.title, description: mode === "employee" ? skill.employeeHint : skill.managerHint });
   const competencyInfo = (skill: SkillMappedToCompetency): SoftInfoPanelContent => ({ eyebrow: skill.blockTitle, title: skill.competencyTitle, description: skill.competencyShortDescription || "Описание компетенции не заполнено." });
+  const chipState = (skill: SkillMappedToCompetency) => {
+    const employeeStrength = employeeStrengths.includes(skill.id);
+    const employeeGrowthSelected = employeeGrowth.includes(skill.id);
+    const managerStrength = strengths.includes(skill.id);
+    const managerGrowth = growth.includes(skill.id);
+    return {
+      employeeStrength,
+      employeeGrowth: employeeGrowthSelected,
+      managerStrength,
+      managerGrowth,
+      match: (employeeStrength && managerStrength) || (employeeGrowthSelected && managerGrowth),
+      conflict: (employeeStrength && managerGrowth) || (employeeGrowthSelected && managerStrength),
+    };
+  };
+  const renderChip = (skill: SkillMappedToCompetency) => {
+    const state = chipState(skill);
+    const selectedAsStrength = strengths.includes(skill.id);
+    const selectedAsGrowth = growth.includes(skill.id);
+    return <button type="button" key={skill.id} className={`soft-chip ${selectedAsStrength ? "is-strength" : ""} ${selectedAsGrowth ? "is-growth" : ""} ${mode === "manager" && (state.employeeStrength || state.employeeGrowth) ? "is-employee" : ""} ${state.match ? "is-match" : ""} ${state.conflict ? "is-conflict" : ""}`} onClick={() => select(skill.id)} title={state.match ? "Совпадает с выбором сотрудника" : state.conflict ? "Расхождение с выбором сотрудника" : undefined}>
+      <span>{skill.title}</span>
+      {mode === "manager" && (state.employeeStrength || state.employeeGrowth) && <small>сотр.</small>}
+      {state.match && <small>✓</small>}
+      {state.conflict && <small>!</small>}
+      <span className="soft-chip__info" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); setInfo(skillInfo(skill)); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setInfo(skillInfo(skill)); } }}>i</span>
+    </button>;
+  };
+  const renderCompetencies = (items: SkillMappedToCompetency[]) => [...new Set(items.map((skill) => skill.competencyId))].map((competencyId) => {
+    const competencyItems = items.filter((skill) => skill.competencyId === competencyId);
+    const first = competencyItems[0];
+    return <div className="soft-competency-card" key={competencyId}><div className="soft-competency-card__head"><h4>{first.competencyTitle}</h4><button type="button" className="info-button" aria-label={`Описание компетенции ${first.competencyTitle}`} onClick={() => setInfo(competencyInfo(first))}>i</button></div><div className="soft-chip-list">{competencyItems.map(renderChip)}</div></div>;
+  });
+  const renderBlock = (block: "result" | "technology" | "team" | "leadership") => {
+    const blockItems = searched.filter((skill) => skill.blockId === block);
+    if (!blockItems.length) return null;
+    return <section className={`soft-block-column soft-block-column--${block}`} key={block}><h3>{blockNames[block]}</h3>{renderCompetencies(blockItems)}</section>;
+  };
   if (!situation) return <div className="empty-note">Сначала выберите управленческую ситуацию, чтобы увидеть подходящий набор навыков.</div>;
   return <div className="mapped-skills">
-    <SelectionCounter strengths={strengths} growth={growth} />
-    <div className="mapped-skills__tools"><input className="skill-search" value={query} placeholder="Поиск по навыку, компетенции или блоку" onChange={(event) => setQuery(event.target.value)} /><button type="button" className={`selected-only-toggle ${selectedOnly ? "is-active" : ""}`} onClick={showSelected}>Показать выбранные</button></div>
-    {!available.length && <div className="empty-note">{selectedOnly ? "Выбранных навыков пока нет." : "По вашему поиску ничего не найдено."}</div>}
-    {Object.entries(blockNames).map(([block, blockTitle]) => {
-      const blockItems = available.filter((skill) => skill.blockId === block);
-      if (!blockItems.length) return null;
-      const competencyIds = [...new Set(blockItems.map((skill) => skill.competencyId))];
-      return <section className="mapped-block" key={block}><h3>{blockTitle}</h3>{competencyIds.map((competencyId) => {
-        const items = blockItems.filter((skill) => skill.competencyId === competencyId);
-        const first = items[0];
-        const isOpen = openCompetencies.includes(competencyId);
-        const strengthCount = items.filter((skill) => strengths.includes(skill.id)).length;
-        const growthCount = items.filter((skill) => growth.includes(skill.id)).length;
-        return <div className={`mapped-competency ${isOpen ? "is-open" : ""}`} key={competencyId}>
-          <div className="mapped-competency__head">
-            <button type="button" className="mapped-competency__summary" onClick={() => toggleCompetency(competencyId)}>
-              <span className="mapped-competency__title">{first.competencyTitle}</span>
-              <span className="mapped-competency__meta">{blockTitle} · {items.length} навыков · Сильные стороны: {strengthCount} · Зоны роста: {growthCount}</span>
-            </button>
-            <button type="button" className="mapped-competency__toggle" onClick={() => toggleCompetency(competencyId)}>{isOpen ? "Свернуть" : "Раскрыть"}</button>
-            <button type="button" className="info-button" aria-label={`Описание компетенции ${first.competencyTitle}`} onClick={() => setInfo(competencyInfo(first))}>i</button>
-          </div>
-          {isOpen && <div className="mapped-competency__skills">{items.map((skill) => {
-            const isStrength = strengths.includes(skill.id);
-            const isGrowth = growth.includes(skill.id);
-            const strengthDisabled = strengths.length >= 5 && !isStrength;
-            const growthDisabled = growth.length >= 5 && !isGrowth;
-            return <div className="mapped-skill-row" key={skill.id}><div><strong>{skill.title}</strong>{mode === "manager" && (employeeStrengths.includes(skill.id) || employeeGrowth.includes(skill.id)) && <span className="employee-choice">{employeeStrengths.includes(skill.id) ? "Выбор сотрудника: сильная сторона" : "Выбор сотрудника: зона роста"}</span>}</div><div className="mapped-skill-row__actions"><button type="button" disabled={strengthDisabled} className={isStrength ? "is-selected" : ""} onClick={() => select(skill.id, "strength")}>Сильная сторона</button><button type="button" disabled={growthDisabled} className={isGrowth ? "is-selected growth" : ""} onClick={() => select(skill.id, "growth")}>Зона роста</button><button type="button" className="info-button" onClick={() => setInfo(skillInfo(skill))}>i</button></div></div>;
-          })}</div>}
-        </div>;
-      })}</section>;
-    })}
+    <div className="soft-skills-top"><div><div className="soft-mode-toggle"><button type="button" className={activeTarget === "strength" ? "is-active" : ""} onClick={() => setActiveTarget("strength")}>Сильные стороны {strengths.length}/5</button><button type="button" className={activeTarget === "growth" ? "is-active growth" : ""} onClick={() => setActiveTarget("growth")}>Зоны роста {growth.length}/5</button></div><input className="skill-search" value={query} placeholder="Поиск по навыку, компетенции или блоку" onChange={(event) => setQuery(event.target.value)} /></div><SelectedSoftSummary strengths={strengths} growth={growth} /></div>
+    {mode === "manager" && <div className="soft-legend"><span>сотр. выбрал сотрудник</span><span>✓ совпадает</span><span>! расхождение</span></div>}
+    {!searched.length && <div className="empty-note">По вашему поиску ничего не найдено.</div>}
+    <div className="soft-block-grid">{(["result", "technology", "team"] as const).map(renderBlock)}</div>
+    {renderBlock("leadership")}
     <SkillInfoSidePanel skill={info} mode={mode} onClose={() => setInfo(null)} />
   </div>;
+}
+
+function SelectedSoftSummary({ strengths, growth }: { strengths: string[]; growth: string[] }) {
+  const empty = !strengths.length && !growth.length;
+  return <aside className="selected-soft-summary"><strong>Выбрано</strong>{empty ? <p>Не выбрано</p> : <><span>Сильные стороны:</span><div>{strengths.slice(0, 4).map((id) => <em key={id}>{itemTitle(id)}</em>)}{strengths.length > 4 && <small>+ ещё {strengths.length - 4}</small>}</div><span>Зоны роста:</span><div>{growth.slice(0, 4).map((id) => <em className="growth" key={id}>{itemTitle(id)}</em>)}{growth.length > 4 && <small>+ ещё {growth.length - 4}</small>}</div></>}</aside>;
 }
 
 function SkillInfoSidePanel({ skill, onClose }: { skill: SoftInfoPanelContent | null; mode: "employee" | "manager"; onClose: () => void }) {
@@ -195,6 +202,10 @@ function Avatar({ employee }: { employee: Employee }) {
 
 function Toast({ message }: { message: string }) {
   return message ? <div className="toast">{message}</div> : null;
+}
+
+function ConfirmDialog({ message, confirmLabel, cancelLabel = "Отмена", onConfirm, onCancel }: { message: string; confirmLabel: string; cancelLabel?: string; onConfirm: () => void; onCancel: () => void }) {
+  return <div className="modal-backdrop" onMouseDown={onCancel}><div className="modal confirm-dialog" onMouseDown={(event) => event.stopPropagation()}><h2>Подтвердите действие</h2><p>{message}</p><div className="confirm-dialog__actions"><Button variant="secondary" onClick={onCancel}>{cancelLabel}</Button><Button onClick={onConfirm}>{confirmLabel}</Button></div></div></div>;
 }
 
 export function App() {
@@ -258,10 +269,17 @@ function SelfReviewEditor({ employee, review, onUpdate, notify }: { employee: Em
   const [step, setStep] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [pendingSituation, setPendingSituation] = useState<ManagementSituation | null>(null);
   const set = <K extends keyof SelfReview>(key: K, value: SelfReview[K]) => onUpdate({ ...review, [key]: value });
   const setSoft = (next: { strengths: string[]; growth: string[] }) => onUpdate({ ...review, softStrengths: next.strengths, softGrowthAreas: next.growth, corporateStrengths: next.strengths, corporateDevelopment: next.growth });
-  const changeSituation = (value: ManagementSituation) => {
+  const applySituation = (value: ManagementSituation) => {
     onUpdate({ ...review, managementSituation: value, softStrengths: [], softGrowthAreas: [], corporateStrengths: [], corporateDevelopment: [] });
+  };
+  const changeSituation = (value: ManagementSituation) => {
+    if (value === review.managementSituation) return;
+    const hasSelection = (review.softStrengths.length || review.softGrowthAreas.length || review.corporateStrengths.length || review.corporateDevelopment.length) > 0;
+    if (hasSelection) return setPendingSituation(value);
+    applySituation(value);
   };
   const fillDemo = () => onUpdate({ ...review, status: "draft", accomplishments: [], hardStrengths: ["data", "stakeholders"], hardDevelopment: ["presentations"], managementSituation: "no_reports", softStrengths: ["result-sozdaet-luchshiy-opyt-level_1-analiz-situacii-klienta-zakazchika-i-konteksta"], softGrowthAreas: ["technology-vnedryaet-tehnologii-level_1-primenenie-ii"], corporateStrengths: ["result-sozdaet-luchshiy-opyt-level_1-analiz-situacii-klienta-zakazchika-i-konteksta"], corporateDevelopment: ["technology-vnedryaet-tehnologii-level_1-primenenie-ii"], preferredDevelopmentDirection: "expertise", interestedInMentoring: true, employeeComment: "Хочу развивать экспертизу и попробовать роль наставника.", developmentFocus: "", notes: "" });
   const save = () => { setSaving(true); window.setTimeout(() => { onUpdate(review); setSaving(false); notify("Черновик сохранён"); }, 400); };
@@ -281,14 +299,16 @@ function SelfReviewEditor({ employee, review, onUpdate, notify }: { employee: Em
     {step === 1 && <Card title="Soft skills" eyebrow="Шаг 2 из 3">
       <label className="field"><span className="field__label">Какая управленческая ситуация ближе всего описывает вашу роль?<b>*</b></span><select className="select-control" value={review.managementSituation} onChange={(event) => changeSituation(event.target.value as ManagementSituation)}><option value="">Выберите вариант</option>{managementSituations.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
       {review.managementSituation && <p className="soft-skill-instruction">Выберите навыки, которые вы считаете своими сильными сторонами, и навыки, которые являются зонами роста. Навыки сгруппированы по корпоративной модели компетенций.</p>}
-      <MappedSkillList mode="employee" situation={review.managementSituation} strengths={review.softStrengths?.length ? review.softStrengths : review.corporateStrengths} growth={review.softGrowthAreas?.length ? review.softGrowthAreas : review.corporateDevelopment} onChange={setSoft} />
+      <MappedSkillList mode="employee" situation={review.managementSituation} strengths={review.softStrengths?.length ? review.softStrengths : review.corporateStrengths} growth={review.softGrowthAreas?.length ? review.softGrowthAreas : review.corporateDevelopment} onChange={setSoft} notify={notify} />
     </Card>}
     {step === 2 && <Card title="Развитие" eyebrow="Шаг 3 из 3" description="Выберите направление, в котором вам было бы интересно развиваться дальше. Руководитель увидит ваш выбор и сможет учесть его при обсуждении следующего периода.">
+      <h3>Какое направление развития вам ближе?</h3>
       <div className="radio-card-grid">{employeeDirections.map((item) => <button type="button" key={item.value} className={`radio-card ${review.preferredDevelopmentDirection === item.value ? "is-selected" : ""}`} onClick={() => set("preferredDevelopmentDirection", item.value)}>{item.label}</button>)}</div>
       <label className="check-row"><input type="checkbox" checked={!!review.interestedInMentoring} onChange={(event) => set("interestedInMentoring", event.target.checked)} /><span>Хочу развиваться в роли ментора / наставника</span><small>Можно выбрать независимо от основного направления развития.</small></label>
-      <Textarea label="Комментарий" value={review.employeeComment} onChange={(value) => set("employeeComment", value)} maxLength={1000} hint="Можно добавить, почему вам интересен выбранный трек или какие задачи развития для вас важны." />
+      <Textarea label="Комментарий" value={review.employeeComment} onChange={(value) => set("employeeComment", value)} maxLength={1000} hint="Можно добавить, почему вам интересен выбранный трек или какие задачи развития для вас важны." placeholder="Можно добавить, почему вам интересен выбранный трек или какие задачи развития для вас важны." />
     </Card>}
     <div className="form-footer"><Button variant="secondary" onClick={save} disabled={saving}>{saving ? "Сохраняем..." : "Сохранить черновик"}</Button><div>{step > 0 && <Button variant="ghost" onClick={() => setStep(step - 1)}>Назад</Button>}{step < 2 ? <Button onClick={() => setStep(step + 1)}>Продолжить</Button> : <Button onClick={submit}>Отправить руководителю</Button>}</div></div>
+    {pendingSituation && <ConfirmDialog message="При смене управленческой ситуации список навыков может измениться. Уже выбранные soft skills будут сброшены. Продолжить?" cancelLabel="Отмена" confirmLabel="Сменить и сбросить выбор" onCancel={() => setPendingSituation(null)} onConfirm={() => { applySituation(pendingSituation); setPendingSituation(null); }} />}
   </>;
 }
 
@@ -315,22 +335,30 @@ function ManagerDashboard({ selfReviews, managerReviews, onOpen }: { selfReviews
 
 function ManagerReviewPage({ employee, selfReview, review, onUpdate, onBack, notify, onComplete }: { employee: Employee; selfReview: SelfReview; review: ManagerReview; onUpdate: (review: ManagerReview) => void; onBack: () => void; notify: (message: string) => void; onComplete: () => void }) {
   const [errors, setErrors] = useState<string[]>([]);
+  const [softDrawerOpen, setSoftDrawerOpen] = useState(false);
+  const [confirmSoftReplace, setConfirmSoftReplace] = useState(false);
   const set = <K extends keyof ManagerReview>(key: K, value: ManagerReview[K]) => onUpdate({ ...review, [key]: value });
   const setWithDraft = (changes: Partial<ManagerReview>) => onUpdate({ ...review, ...changes });
   const employeeSoftStrengths = softSelectionFromReview(selfReview.softStrengths, selfReview.corporateStrengths);
   const employeeSoftGrowth = softSelectionFromReview(selfReview.softGrowthAreas, selfReview.corporateDevelopment);
-  const fillDemo = () => { const next = { ...review, category: "B" as const, hardStrengths: selfReview.hardStrengths.length ? selfReview.hardStrengths.slice(0, 3) : ["data"], hardDevelopment: selfReview.hardDevelopment.length ? selfReview.hardDevelopment.slice(0, 3) : ["presentations"], corporateStrengths: employeeSoftStrengths.slice(0, 5), corporateDevelopment: employeeSoftGrowth.slice(0, 5), mainTrack: selfReview.preferredDevelopmentDirection === "leadership" ? "management" as const : "expert" as const, mentorTrack: selfReview.interestedInMentoring, retentionTrack: false, successorTrack: false, managerComment: "Трек выбран с учётом самооценки сотрудника.", finalComment: "Трек выбран с учётом самооценки сотрудника." }; onUpdate(next); };
-  const confirmEmployeeSoftSkills = () => {
+  const managerSituation = review.softManagementSituation || selfReview.managementSituation || "no_reports";
+  const replaceWithEmployeeSoftSkills = () => {
     const nextStrengths = employeeSoftStrengths.slice(0, 5);
     const nextGrowth = employeeSoftGrowth.filter((id) => !nextStrengths.includes(id)).slice(0, 5);
     if (!nextStrengths.length && !nextGrowth.length) {
       notify("У сотрудника нет выбранных soft skills для подтверждения");
       return;
     }
-    onUpdate({ ...review, corporateStrengths: nextStrengths, corporateDevelopment: nextGrowth });
+    onUpdate({ ...review, corporateStrengths: nextStrengths, corporateDevelopment: nextGrowth, softManagementSituation: managerSituation });
     notify("Выбор сотрудника по soft skills подтверждён");
   };
+  const confirmEmployeeSoftSkills = () => {
+    if (review.corporateStrengths.length || review.corporateDevelopment.length) return setConfirmSoftReplace(true);
+    replaceWithEmployeeSoftSkills();
+  };
+  const fillDemo = () => { const next = { ...review, category: "B" as const, hardStrengths: selfReview.hardStrengths.length ? selfReview.hardStrengths.slice(0, 3) : ["data"], hardDevelopment: selfReview.hardDevelopment.length ? selfReview.hardDevelopment.slice(0, 3) : ["presentations"], corporateStrengths: employeeSoftStrengths.slice(0, 5), corporateDevelopment: employeeSoftGrowth.slice(0, 5), softManagementSituation: managerSituation, mainTrack: selfReview.preferredDevelopmentDirection === "leadership" ? "management" as const : "expert" as const, mentorTrack: selfReview.interestedInMentoring, retentionTrack: false, successorTrack: false, managerComment: "Трек выбран с учётом самооценки сотрудника.", finalComment: "Трек выбран с учётом самооценки сотрудника." }; onUpdate(next); };
   const complete = () => { const nextErrors = validateManager(review); setErrors(nextErrors); if (!nextErrors.length) { onUpdate({ ...review, status: "completed" }); notify("Оценка руководителя завершена"); onComplete(); } };
+  const employeeTrack = selfReview.preferredDevelopmentDirection === "leadership" ? "management" : selfReview.preferredDevelopmentDirection === "expertise" ? "expert" : "";
   return <div className="manager-page">
     <div className="manager-header"><Button variant="ghost" onClick={onBack}>← Вернуться к списку</Button><div><h1>{employee.fullName}</h1><p>{employee.position} · {employee.department}</p></div><Badge status={review.status} /></div>
     {errors.length > 0 && <div className="error-box error-box--floating"><strong>Не хватает данных для завершения</strong>{errors.map((error) => <span key={error}>{error}</span>)}</div>}
@@ -354,24 +382,55 @@ function ManagerReviewPage({ employee, selfReview, review, onUpdate, onBack, not
           <QuickCopy label="Подтвердить навыки, которые помогали результату" onClick={() => setWithDraft({ hardStrengths: [...new Set([...review.hardStrengths, ...selfReview.hardStrengths])].slice(0, 3) })} /><SkillPicker selected={review.hardStrengths} onChange={(items) => setWithDraft({ hardStrengths: items.slice(0, 3) })} tone="manager-strength" exclude={review.hardDevelopment} />
           <div className="divider" /><QuickCopy label="Подтвердить навыки, которые стоит усилить" onClick={() => setWithDraft({ hardDevelopment: [...new Set([...review.hardDevelopment, ...selfReview.hardDevelopment])].slice(0, 3) })} /><SkillPicker selected={review.hardDevelopment} onChange={(items) => setWithDraft({ hardDevelopment: items.slice(0, 3) })} tone="manager-development" exclude={review.hardStrengths} />
         </Card>
-        <Card title="Soft skills" description="Выберите навыки, которые вы считаете сильными сторонами сотрудника, и навыки, которые являются зонами роста. Вы можете подтвердить выбор сотрудника или скорректировать его.">
-          <QuickCopy label="Подтвердить выбор сотрудника" onClick={confirmEmployeeSoftSkills} />
-          <MappedSkillList mode="manager" situation={selfReview.managementSituation || "no_reports"} strengths={review.corporateStrengths} growth={review.corporateDevelopment} employeeStrengths={employeeSoftStrengths} employeeGrowth={employeeSoftGrowth} onChange={(next) => setWithDraft({ corporateStrengths: next.strengths, corporateDevelopment: next.growth })} />
-        </Card>
+        <ManagerSoftSkillsSummary employeeStrengths={employeeSoftStrengths} employeeGrowth={employeeSoftGrowth} managerStrengths={review.corporateStrengths} managerGrowth={review.corporateDevelopment} onConfirmEmployee={confirmEmployeeSoftSkills} onEdit={() => setSoftDrawerOpen(true)} />
         <Card title="Трек сотрудника на следующий период" description="Выберите трек, который считаете приоритетным для сотрудника на следующий период. Вы можете учесть предпочтение сотрудника или скорректировать его.">
           <div className="preference-note"><strong>Выбор сотрудника:</strong> {employeeDirections.find((item) => item.value === selfReview.preferredDevelopmentDirection)?.label ?? "не выбран"}{selfReview.interestedInMentoring ? " · интерес к менторству" : ""}</div>
-          <div className="radio-card-grid">{managerTracks.map((item) => <button type="button" key={item.value} className={`radio-card ${review.mainTrack === item.value ? "is-selected" : ""}`} onClick={() => set("mainTrack", item.value)}>{item.label}</button>)}</div>
-          <h3 className="additional-tracks-title">Также можно выбрать дополнительные треки</h3>
-          <label className="check-row"><input type="checkbox" checked={!!review.mentorTrack} onChange={(event) => set("mentorTrack", event.target.checked)} /><span>Трек наставника / ментора</span></label>
-          <label className="check-row"><input type="checkbox" checked={!!review.retentionTrack} onChange={(event) => set("retentionTrack", event.target.checked)} /><span>Ключевой эксперт / трек удержания</span><small>Для сотрудников с редкой экспертизой или высоким риском потери ценных знаний.</small></label>
-          <label className="check-row"><input type="checkbox" checked={!!review.successorTrack} onChange={(event) => set("successorTrack", event.target.checked)} /><span>Преемник на позицию</span><small>Для сотрудников, которых можно рассматривать как потенциальных преемников на позицию от 8 грейда.</small></label>
+          <h3 className="track-section-title">Выберите основной трек</h3>
+          <div className="radio-card-grid">{managerTracks.map((item) => <button type="button" key={item.value} className={`radio-card ${review.mainTrack === item.value ? "is-selected" : ""}`} onClick={() => set("mainTrack", item.value)}><strong>{item.label}</strong><span>{item.description}</span>{employeeTrack === item.value && <em>совпадает с предпочтением сотрудника</em>}{employeeTrack && employeeTrack !== item.value && review.mainTrack === item.value && <em className="is-muted">отличается от предпочтения сотрудника</em>}</button>)}</div>
+          <h3 className="track-section-title">Выберите дополнительные треки при необходимости</h3>
+          <div className="checkbox-card-grid"><label className={`checkbox-card ${review.mentorTrack ? "is-selected" : ""}`}><input type="checkbox" checked={!!review.mentorTrack} onChange={(event) => set("mentorTrack", event.target.checked)} /><strong>Трек наставника / ментора</strong><span>Передача опыта и развитие наставнических навыков</span>{selfReview.interestedInMentoring && <em>интерес сотрудника</em>}</label><label className={`checkbox-card ${review.retentionTrack ? "is-selected" : ""}`}><input type="checkbox" checked={!!review.retentionTrack} onChange={(event) => set("retentionTrack", event.target.checked)} /><strong>Ключевой эксперт / трек удержания</strong><span>Укрепление экспертизы и ключевой роли в команде</span></label><label className={`checkbox-card ${review.successorTrack ? "is-selected" : ""}`}><input type="checkbox" checked={!!review.successorTrack} onChange={(event) => set("successorTrack", event.target.checked)} /><strong>Преемник на позицию</strong><span>Подготовка к занятию ключевой позиции</span></label></div>
           {review.successorTrack && <label className="field"><span className="field__label">Позиция, на которую рассматривается сотрудник<b>*</b></span><input value={review.successorPosition} placeholder="Например: Руководитель направления, Директор департамента" onChange={(event) => set("successorPosition", event.target.value)} /></label>}
-          <Textarea label="Комментарий руководителя" value={review.managerComment || review.finalComment} onChange={(value) => onUpdate({ ...review, managerComment: value, finalComment: value })} maxLength={1500} hint="Можно пояснить выбранный трек или добавить рекомендации для обсуждения с сотрудником." />
+          {review.successorTrack && <p className="field__hint">Используется для позиций от 8 грейда.</p>}
+          <Textarea label="Комментарий руководителя" value={review.managerComment || review.finalComment} onChange={(value) => onUpdate({ ...review, managerComment: value, finalComment: value })} maxLength={1500} placeholder="Можно пояснить выбранный трек или добавить рекомендации для обсуждения с сотрудником." />
         </Card>
         <div className="form-footer"><Button variant="ghost" onClick={onBack}>Вернуться к списку</Button><div><Button variant="secondary" onClick={() => notify("Черновик сохранён")}>Сохранить черновик</Button><Button onClick={complete}>Завершить оценку</Button></div></div>
       </section>
     </div>
+    {softDrawerOpen && <ManagerSoftSkillsDrawer initialSituation={managerSituation} strengths={review.corporateStrengths} growth={review.corporateDevelopment} employeeStrengths={employeeSoftStrengths} employeeGrowth={employeeSoftGrowth} notify={notify} onCancel={() => setSoftDrawerOpen(false)} onSave={(next) => { onUpdate({ ...review, corporateStrengths: next.strengths, corporateDevelopment: next.growth, softManagementSituation: next.situation }); setSoftDrawerOpen(false); notify("Выбор soft skills сохранён"); }} />}
+    {confirmSoftReplace && <ConfirmDialog message="Выбор руководителя будет заменён выбором сотрудника. Продолжить?" cancelLabel="Отмена" confirmLabel="Подтвердить и заменить" onCancel={() => setConfirmSoftReplace(false)} onConfirm={() => { replaceWithEmployeeSoftSkills(); setConfirmSoftReplace(false); }} />}
   </div>;
+}
+
+const softComparisonStats = (employeeStrengths: string[], employeeGrowth: string[], managerStrengths: string[], managerGrowth: string[]) => {
+  const sameStrengths = managerStrengths.filter((id) => employeeStrengths.includes(id)).length;
+  const sameGrowth = managerGrowth.filter((id) => employeeGrowth.includes(id)).length;
+  const conflicts = managerStrengths.filter((id) => employeeGrowth.includes(id)).length + managerGrowth.filter((id) => employeeStrengths.includes(id)).length;
+  const additions = managerStrengths.filter((id) => !employeeStrengths.includes(id) && !employeeGrowth.includes(id)).length + managerGrowth.filter((id) => !employeeStrengths.includes(id) && !employeeGrowth.includes(id)).length;
+  const unconfirmed = employeeStrengths.filter((id) => !managerStrengths.includes(id) && !managerGrowth.includes(id)).length + employeeGrowth.filter((id) => !managerStrengths.includes(id) && !managerGrowth.includes(id)).length;
+  return { matches: sameStrengths + sameGrowth, additions, conflicts, unconfirmed };
+};
+
+function SoftChipGroup({ ids, tone }: { ids: string[]; tone: "strength" | "growth" }) {
+  return ids.length ? <div className="soft-summary-chips">{ids.map((id) => <span className={`soft-summary-chip soft-summary-chip--${tone}`} key={id}>{itemTitle(id)}</span>)}</div> : <p className="muted">Не выбрано</p>;
+}
+
+function ManagerSoftSkillsSummary({ employeeStrengths, employeeGrowth, managerStrengths, managerGrowth, onConfirmEmployee, onEdit }: { employeeStrengths: string[]; employeeGrowth: string[]; managerStrengths: string[]; managerGrowth: string[]; onConfirmEmployee: () => void; onEdit: () => void }) {
+  const stats = softComparisonStats(employeeStrengths, employeeGrowth, managerStrengths, managerGrowth);
+  return <Card title="Soft skills" description="Просмотрите выбор сотрудника, подтвердите его или скорректируйте при необходимости."><div className="manager-soft-summary"><h3>Выбор soft skills</h3><section><h4>Сильные стороны</h4><div className="soft-summary-row"><span>Сотрудник:</span><SoftChipGroup ids={employeeStrengths} tone="strength" /></div><div className="soft-summary-row"><span>Руководитель:</span><SoftChipGroup ids={managerStrengths} tone="strength" /></div></section><section><h4>Зоны роста</h4><div className="soft-summary-row"><span>Сотрудник:</span><SoftChipGroup ids={employeeGrowth} tone="growth" /></div><div className="soft-summary-row"><span>Руководитель:</span><SoftChipGroup ids={managerGrowth} tone="growth" /></div></section><div className="soft-summary-stats"><span>Совпадает: {stats.matches}</span><span>Добавлено руководителем: {stats.additions}</span><span>Расхождения: {stats.conflicts}</span><span>Не подтверждено: {stats.unconfirmed}</span></div><div className="soft-summary-actions"><Button onClick={onEdit}>Изменить выбор</Button><Button variant="secondary" onClick={onConfirmEmployee}>Подтвердить выбор сотрудника</Button></div></div></Card>;
+}
+
+function ManagerSoftSkillsDrawer({ initialSituation, strengths, growth, employeeStrengths, employeeGrowth, notify, onCancel, onSave }: { initialSituation: ManagementSituation; strengths: string[]; growth: string[]; employeeStrengths: string[]; employeeGrowth: string[]; notify: (message: string) => void; onCancel: () => void; onSave: (next: { situation: ManagementSituation; strengths: string[]; growth: string[] }) => void }) {
+  const [situation, setSituation] = useState<ManagementSituation>(initialSituation || "no_reports");
+  const [draftStrengths, setDraftStrengths] = useState(strengths);
+  const [draftGrowth, setDraftGrowth] = useState(growth);
+  const [pendingSituation, setPendingSituation] = useState<ManagementSituation | null>(null);
+  const applySituation = (value: ManagementSituation) => { setSituation(value); setDraftStrengths([]); setDraftGrowth([]); };
+  const changeSituation = (value: ManagementSituation) => {
+    if (value === situation) return;
+    if (draftStrengths.length || draftGrowth.length) return setPendingSituation(value);
+    applySituation(value);
+  };
+  return <div className="drawer-backdrop" onMouseDown={onCancel}><aside className="soft-drawer" onMouseDown={(event) => event.stopPropagation()}><div className="soft-drawer__head"><div><h2>Изменение выбора soft skills</h2><p>Выберите навыки сотрудника в режиме сильных сторон или зон роста.</p></div><button type="button" onClick={onCancel}>×</button></div><label className="field"><span className="field__label">Управленческая ситуация сотрудника</span><select className="select-control" value={situation} onChange={(event) => changeSituation(event.target.value as ManagementSituation)}>{managementSituations.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><MappedSkillList mode="manager" situation={situation} strengths={draftStrengths} growth={draftGrowth} employeeStrengths={employeeStrengths} employeeGrowth={employeeGrowth} notify={notify} onChange={(next) => { setDraftStrengths(next.strengths); setDraftGrowth(next.growth); }} /><div className="soft-drawer__footer"><Button variant="secondary" onClick={onCancel}>Отмена</Button><Button onClick={() => onSave({ situation, strengths: draftStrengths, growth: draftGrowth })}>Сохранить выбор</Button></div>{pendingSituation && <ConfirmDialog message="При смене управленческой ситуации список навыков изменится. Выбор soft skills руководителя будет сброшен. Продолжить?" cancelLabel="Отмена" confirmLabel="Сменить и сбросить выбор" onCancel={() => setPendingSituation(null)} onConfirm={() => { applySituation(pendingSituation); setPendingSituation(null); }} />}</aside></div>;
 }
 
 function QuickCopy({ label, onClick }: { label: string; onClick: () => void }) { return <button type="button" className="quick-copy" onClick={onClick}>+ {label}</button>; }
@@ -407,9 +466,15 @@ function Analytics({ selfReviews, managerReviews }: { selfReviews: SelfReview[];
     { preference: "Интерес к менторству", count: selfReviews.filter((review) => review.interestedInMentoring).length },
   ];
   const alignedCount = employees.filter((employee) => isTrackAligned(selfReviews.find((item) => item.employeeId === employee.id), managerReviews.find((item) => item.employeeId === employee.id))).length;
+  const softStats = employees.map((employee) => {
+    const self = selfReviews.find((item) => item.employeeId === employee.id);
+    const manager = managerReviews.find((item) => item.employeeId === employee.id);
+    return softComparisonStats(self ? selfStrengths(self) : [], self ? selfGrowth(self) : [], manager?.corporateStrengths ?? [], manager?.corporateDevelopment ?? []);
+  }).reduce((acc, item) => ({ matches: acc.matches + item.matches, additions: acc.additions + item.additions, conflicts: acc.conflicts + item.conflicts, unconfirmed: acc.unconfirmed + item.unconfirmed }), { matches: 0, additions: 0, conflicts: 0, unconfirmed: 0 });
   return <div className="page"><div className="page-header"><div><div className="eyebrow">HR-аналитика</div><h1>Сводка по циклу оценки</h1><p>Самооценка и оценка руководителя разделены. Аналитика показывает выбранные навыки и треки без расчёта категории.</p></div><div className="deadline"><span>Цикл</span><strong>Performance Review 2026</strong></div></div>
     <div className="metric-grid"><Card><span>Завершено</span><b>{completed.length}</b><small>из {employees.length} оценок</small></Card><Card><span>В работе</span><b>{employees.length - completed.length}</b><small>требуют внимания</small></Card><Card><span>Основной трек выбран</span><b>{managerReviews.filter((review) => review.mainTrack).length}</b><small>сотрудников</small></Card><Card><span>Совпадение треков</span><b>{alignedCount}</b><small>самооценка и руководитель</small></Card></div>
     <div className="analytics-grid"><Card title="Распределение треков руководителя"><div className="table-wrap"><table><thead><tr><th>Трек</th><th>Количество сотрудников</th></tr></thead><tbody>{mainTrackCounts.map((row) => <tr key={row.track}><td>{row.track}</td><td>{row.count}</td></tr>)}</tbody></table></div></Card><Card title="Предпочтения сотрудников"><div className="table-wrap"><table><thead><tr><th>Предпочтение</th><th>Количество сотрудников</th></tr></thead><tbody>{preferenceCounts.map((row) => <tr key={row.preference}><td>{row.preference}</td><td>{row.count}</td></tr>)}</tbody></table></div></Card></div>
+    <Card title="Совпадения и расхождения по soft skills"><div className="table-wrap"><table><thead><tr><th>Метрика</th><th>Количество</th></tr></thead><tbody><tr><td>Совпадает</td><td>{softStats.matches}</td></tr><tr><td>Добавлено руководителем</td><td>{softStats.additions}</td></tr><tr><td>Расхождения</td><td>{softStats.conflicts}</td></tr><tr><td>Не подтверждено</td><td>{softStats.unconfirmed}</td></tr></tbody></table></div></Card>
     <Card title="Сотрудники"><div className="table-wrap"><table><thead><tr><th>Сотрудник</th><th>Категория</th><th>Выбор сотрудника</th><th>Выбор руководителя</th><th>Совпадение</th><th>Статус</th></tr></thead><tbody>{employees.map((employee) => { const self = selfReviews.find((item) => item.employeeId === employee.id); const review = managerReviews.find((item) => item.employeeId === employee.id); const aligned = isTrackAligned(self, review); return <tr key={employee.id}><td><strong>{employee.fullName}</strong><span>{employee.position}</span></td><td>{review?.category || "—"}</td><td>{directionLabel(self?.preferredDevelopmentDirection ?? "")}</td><td>{mainTrackLabel(review?.mainTrack ?? "")}</td><td>{self?.preferredDevelopmentDirection && review?.mainTrack ? aligned ? "Да" : "Нет" : "—"}</td><td><Badge status={review?.status === "completed" ? "completed" : "draft"} /></td></tr>; })}</tbody></table></div></Card>
     <div className="analytics-grid"><FrequencyCard title="Навыки по самооценке" subtitle="Топ выборов сотрудников" strengths={frequency(selfReviews.map(selfStrengths))} development={frequency(selfReviews.map(selfGrowth))} /><FrequencyCard title="Навыки по оценке руководителей" subtitle="Топ выборов руководителей" strengths={frequency(managerReviews.map((item) => item.corporateStrengths))} development={frequency(managerReviews.map((item) => item.corporateDevelopment))} /></div>
   </div>;

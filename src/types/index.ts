@@ -82,6 +82,7 @@ export type ManagerReview = {
   hardDevelopment: string[];
   corporateStrengths: string[];
   corporateDevelopment: string[];
+  softManagementSituation: ManagementSituation;
   strengthsText: string;
   developmentText: string;
   categoryRationale: string;

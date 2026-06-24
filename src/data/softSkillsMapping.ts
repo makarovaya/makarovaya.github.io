@@ -1,0 +1,1 @@
+export { mappedSoftSkills } from "./softSkills";
