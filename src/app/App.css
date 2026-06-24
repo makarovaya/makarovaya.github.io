@@ -309,13 +309,17 @@ td span { display: block; margin-top: 3px; color: var(--rt-fg-soft); font-size: 
 .soft-summary-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .drawer-backdrop { position: fixed; inset: 0; z-index: 150; display: flex; justify-content: flex-end; background: rgba(29,29,34,.3); }
 .soft-drawer { display: grid; grid-template-rows: auto auto 1fr auto; gap: 14px; width: min(980px, 100%); height: 100%; padding: 24px; overflow: auto; background: white; box-shadow: -18px 0 50px rgba(29,29,34,.18); }
+.hard-drawer { grid-template-rows: auto auto auto auto auto auto 1fr auto; gap: 12px; }
 .soft-drawer__head { display: flex; justify-content: space-between; gap: 18px; }
 .soft-drawer__head h2 { margin-bottom: 4px; }
 .soft-drawer__head button { width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--rt-bg-surface-muted); color: var(--rt-fg-muted); font-size: 22px; }
 .soft-drawer__footer { position: sticky; bottom: -24px; display: flex; justify-content: flex-end; gap: 8px; padding: 14px 0 0; background: white; }
-.hard-drawer-summary { display: grid; gap: 7px; padding: 12px; border: 1px solid var(--rt-border-soft); border-radius: 12px; background: var(--rt-bg-surface-muted); }
-.hard-drawer-summary strong { font-size: 14px; }
-.hard-drawer-summary > span { color: var(--rt-fg-muted); font-size: 12px; font-weight: 800; }
+.hard-drawer-choice { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--rt-border-soft); border-radius: 12px; background: var(--rt-bg-surface-muted); }
+.hard-drawer-choice strong { font-size: 14px; }
+.hard-drawer-choice > span { color: var(--rt-fg-muted); font-size: 12px; font-weight: 800; }
+.hard-drawer-choice .button { justify-self: start; margin-top: 2px; }
+.hard-drawer-choice--employee { background: white; }
+.hard-drawer-choice--employee .muted { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--rt-bg-warning-soft); color: #855d00; }
 .add-custom-skill { justify-self: start; min-height: 34px; padding: 0 12px; border: 1px dashed var(--rt-border-accent); border-radius: 9px; background: #f8f3ff; color: var(--rt-fg-accent); font-size: 12px; font-weight: 800; }
 .hard-chip-list { display: flex; flex-wrap: wrap; gap: 7px; align-content: start; }
 .hard-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 7px 10px; border: 1px solid var(--rt-border-soft); border-radius: 10px; background: white; color: var(--rt-fg-default); font-size: 12px; font-weight: 800; }

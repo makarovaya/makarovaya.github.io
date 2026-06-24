@@ -435,6 +435,7 @@ function ManagerHardSkillsDrawer({ strengths, growth, employeeStrengths, employe
   const [activeTarget, setActiveTarget] = useState<"strength" | "growth">("strength");
   const [draftStrengths, setDraftStrengths] = useState(strengths);
   const [draftGrowth, setDraftGrowth] = useState(growth);
+  const [confirmReplace, setConfirmReplace] = useState(false);
   const [query, setQuery] = useState("");
   const allIds = [...skills.map((skill) => skill.id), ...[...new Set([...draftStrengths, ...draftGrowth, ...employeeStrengths, ...employeeGrowth].filter(isCustomSkill))]];
   const lowerQuery = query.trim().toLowerCase();
@@ -458,6 +459,15 @@ function ManagerHardSkillsDrawer({ strengths, growth, employeeStrengths, employe
     select(customSkillId(title));
     setQuery("");
   };
+  const applyEmployeeChoice = () => {
+    setDraftStrengths(employeeStrengths.slice(0, 3));
+    setDraftGrowth(employeeGrowth.filter((id) => !employeeStrengths.includes(id)).slice(0, 3));
+    notify("Выбор сотрудника по hard skills подтверждён");
+  };
+  const confirmEmployeeChoice = () => {
+    if (draftStrengths.length || draftGrowth.length) return setConfirmReplace(true);
+    applyEmployeeChoice();
+  };
   const renderHardChip = (id: string) => {
     const employeeStrength = employeeStrengths.includes(id);
     const employeeGrowthSelected = employeeGrowth.includes(id);
@@ -467,7 +477,8 @@ function ManagerHardSkillsDrawer({ strengths, growth, employeeStrengths, employe
     const conflict = (employeeStrength && managerGrowth) || (employeeGrowthSelected && managerStrength);
     return <button type="button" key={id} className={`hard-chip ${managerStrength ? "is-strength" : ""} ${managerGrowth ? "is-growth" : ""} ${(employeeStrength || employeeGrowthSelected) && !managerStrength && !managerGrowth ? "is-employee" : ""} ${match ? "is-match" : ""} ${conflict ? "is-conflict" : ""}`} onClick={() => select(id)}>{(managerStrength || managerGrowth) && <small>✓</small>}<span>{itemTitle(id)}</span>{isCustomSkill(id) && <small>свой</small>}{(employeeStrength || employeeGrowthSelected) && <small>сотр.</small>}{conflict && <small>!</small>}{!managerStrength && !managerGrowth && !employeeStrength && !employeeGrowthSelected && <small>+</small>}</button>;
   };
-  return <div className="drawer-backdrop" onMouseDown={onCancel}><aside className="soft-drawer" onMouseDown={(event) => event.stopPropagation()}><div className="soft-drawer__head"><div><h2>Изменение выбора hard skills</h2><p>Выберите навыки в активном режиме или добавьте свой вариант через поиск.</p></div><button type="button" onClick={onCancel}>×</button></div><div className="soft-mode-toggle"><button type="button" className={activeTarget === "strength" ? "is-active" : ""} onClick={() => setActiveTarget("strength")}>Сильные стороны {draftStrengths.length}/3</button><button type="button" className={activeTarget === "growth" ? "is-active growth" : ""} onClick={() => setActiveTarget("growth")}>Зоны роста {draftGrowth.length}/3</button></div><div className="hard-drawer-summary"><strong>Выбор сотрудника</strong><span>Сильные стороны</span><HardChipGroup ids={employeeStrengths} tone="strength" /><span>Зоны роста</span><HardChipGroup ids={employeeGrowth} tone="growth" /></div><input className="skill-search" value={query} placeholder="Поиск по hard skills или добавление своего навыка" onChange={(event) => setQuery(event.target.value)} />{canAddCustom && <button type="button" className="add-custom-skill" onClick={addCustom}>+ Добавить “{query.trim()}”</button>}<div className="hard-chip-list">{visibleIds.map(renderHardChip)}</div><div className="soft-drawer__footer"><Button variant="secondary" onClick={onCancel}>Отмена</Button><Button onClick={() => onSave({ strengths: draftStrengths, growth: draftGrowth })}>Сохранить выбор</Button></div></aside></div>;
+  const hasEmployeeChoice = employeeStrengths.length > 0 || employeeGrowth.length > 0;
+  return <div className="drawer-backdrop" onMouseDown={onCancel}><aside className="soft-drawer hard-drawer" onMouseDown={(event) => event.stopPropagation()}><div className="soft-drawer__head"><div><h2>Изменение выбора hard skills</h2><p>Выберите навыки или добавьте свой вариант через поиск.</p></div><button type="button" onClick={onCancel}>×</button></div><div className="soft-mode-toggle"><button type="button" className={activeTarget === "strength" ? "is-active" : ""} onClick={() => setActiveTarget("strength")}>Сильные стороны {draftStrengths.length}/3</button><button type="button" className={activeTarget === "growth" ? "is-active growth" : ""} onClick={() => setActiveTarget("growth")}>Зоны роста {draftGrowth.length}/3</button></div><div className="hard-drawer-choice"><strong>Ваш выбор</strong><span>Сильные стороны:</span><HardChipGroup ids={draftStrengths} tone="strength" /><span>Зоны роста:</span><HardChipGroup ids={draftGrowth} tone="growth" /></div><div className="hard-drawer-choice hard-drawer-choice--employee"><strong>Выбор сотрудника</strong>{hasEmployeeChoice ? <><span>Сильные стороны:</span><HardChipGroup ids={employeeStrengths} tone="strength" /><span>Зоны роста:</span><HardChipGroup ids={employeeGrowth} tone="growth" /><Button variant="secondary" onClick={confirmEmployeeChoice}>Подтвердить выбор сотрудника</Button></> : <p className="muted">Самооценка ещё не заполнена. Вы можете выбрать навыки руководителя самостоятельно.</p>}</div><input className="skill-search" value={query} placeholder="Поиск hard skills или добавление своего навыка" onChange={(event) => setQuery(event.target.value)} />{canAddCustom && <button type="button" className="add-custom-skill" onClick={addCustom}>+ Добавить “{query.trim()}”</button>}<div className="hard-chip-list">{visibleIds.map(renderHardChip)}</div><div className="soft-drawer__footer"><Button variant="secondary" onClick={onCancel}>Отмена</Button><Button onClick={() => onSave({ strengths: draftStrengths, growth: draftGrowth })}>Сохранить выбор</Button></div>{confirmReplace && <ConfirmDialog message="Выбор руководителя будет заменён выбором сотрудника. Продолжить?" cancelLabel="Отмена" confirmLabel="Подтвердить и заменить" onCancel={() => setConfirmReplace(false)} onConfirm={() => { applyEmployeeChoice(); setConfirmReplace(false); }} />}</aside></div>;
 }
 
 function SoftChipGroup({ ids, tone }: { ids: string[]; tone: "strength" | "growth" }) {
