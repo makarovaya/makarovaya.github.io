@@ -288,7 +288,7 @@ function SelfReviewEditor({ employee, review, onUpdate, notify }: { employee: Em
     const nextErrors = validateSelf(review); setErrors(nextErrors);
     if (!nextErrors.length) { onUpdate({ ...review, status: "submitted" }); notify("Самооценка отправлена"); }
   };
-  if (review.status === "submitted") return <Card className="success-state"><div className="success-state__icon">✓</div><Badge status="submitted" /><h2>Самооценка отправлена руководителю</h2><p>Встретьтесь с руководителем и обсудите вашу самооценку</p></Card>;
+  if (review.status === "submitted") return <Card className="success-state"><div className="success-state__icon">✓</div><Badge status="submitted" /><h2>Встретьтесь с руководителем и обсудите вашу самооценку</h2></Card>;
   return <>
     <Card className="intro-card"><div className="intro-card__row"><div><Badge status={review.status} /><h2>Самооценка за 2026 год</h2><p>Выберите hard skills, soft skills и направление развития. Категория не рассчитывается автоматически.</p></div><Button variant="secondary" onClick={fillDemo}>Заполнить примером</Button></div></Card>
     <div className="stepper stepper--three">{["Hard skills", "Soft skills", "Развитие"].map((title, index) => <button type="button" className={index === step ? "is-active" : index < step ? "is-done" : ""} key={title} onClick={() => setStep(index)}><span>{index < step ? "✓" : index + 1}</span>{title}</button>)}</div>
